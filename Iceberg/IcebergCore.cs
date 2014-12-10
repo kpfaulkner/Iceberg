@@ -27,6 +27,8 @@ namespace Iceberg
     class IcebergCore
     {
         static string VersionKey = "VERSION";
+        const string SigUrl = "sigurl";
+        const string SigCount = "sigcount";
 
         /// <summary>
         /// Upload/update container/blob in Azure storage. 
@@ -45,12 +47,35 @@ namespace Iceberg
                 var cloudClient = AzureHelper.GetCloudBlobClient();
                 var referenceBlob = cloudClient.GetBlobReferenceFromServer( new Uri( AzureHelper.GenerateUrl(containerName, blobName)));
 
+                // signature info from existing blob.
+                referenceBlob.FetchAttributes();
+                var sigCount = Convert.ToInt32(referenceBlob.Metadata[SigCount]);
+                var sigUrl = referenceBlob.Metadata[SigUrl];
+
+                int latestVersionNumber = GetLatestVersionNumber(referenceBlob);
+                var nextVersion = latestVersionNumber + 1;
+                var newBlobName = string.Format("{0}.{1}", referenceBlob.Name, nextVersion);
+            
                 // gets name for new blob.
                 // will need to wait for async blob copy to complete.
-                var newBlobName = CopyBlobToNewVersion(cloudClient, referenceBlob);
+                CopyBlobToNewVersion(cloudClient, referenceBlob, newBlobName);
 
                 // wait until complete
                 MonitorASyncBlobCopy(containerName, newBlobName, 120); // 2 min timeout?
+
+                var sigReferenceBlob = cloudClient.GetBlobReferenceFromServer(new Uri(AzureHelper.GenerateUrl(containerName, sigUrl)));
+
+                sigCount++;
+                var newSigReferenceBlobName = string.Format("{0}.{1}.sig", newBlobName, sigCount);
+
+                // copy signature file.
+                CopyBlobToNewVersion(cloudClient, sigReferenceBlob, newSigReferenceBlobName);
+
+                // wait until complete
+                MonitorASyncBlobCopy(containerName, newSigReferenceBlobName, 120); // 2 min timeout?
+
+                // modify new blobs metadata with signature reference.
+                UpdateSignatureDetails(containerName, newBlobName, newSigReferenceBlobName, sigCount);
 
                 // use blobsync to update this new latest.
                 var blobSyncClient = new BlobSync.AzureOps();
@@ -64,6 +89,20 @@ namespace Iceberg
                 // doesnt exist, nothing tricky to do just upload the sucker.
 
             }
+        }
+
+        private void UpdateSignatureDetails(string containerName, string newBlobName, string newSigReferenceBlobName, int sigCount)
+        {
+            var cloudClient = AzureHelper.GetCloudBlobClient();
+            var newBlobUrl = AzureHelper.GenerateUrl( containerName, newBlobName);
+            var newBlob = cloudClient.GetBlobReferenceFromServer(new Uri(newBlobUrl));
+
+            newBlob.FetchAttributes();
+            newBlob.Metadata[SigCount] = sigCount.ToString();
+            newBlob.Metadata[SigUrl] = newSigReferenceBlobName;
+
+            newBlob.SetMetadata();
+
         }
 
         public static void MonitorASyncBlobCopy(string containerName, string blobName, int timeoutSeconds)
@@ -97,7 +136,7 @@ namespace Iceberg
 
             }
 
-            if (operationTime > operationExpireTime)
+            if (!completedCopy)
             {
                 // expired... throw exception
                 throw new TimeoutException("Copying operation taking too long");
@@ -112,14 +151,13 @@ namespace Iceberg
         /// returns new blob name
         /// </summary>
         /// <param name="referenceBlob"></param>
-        private string CopyBlobToNewVersion(CloudBlobClient blobClient, ICloudBlob referenceBlob)
+        private string CopyBlobToNewVersion(CloudBlobClient blobClient, ICloudBlob referenceBlob, string newBlobName)
         {
-            int latestVersionNumber = GetLatestVersionNumber(referenceBlob);
-            var nextVersion = latestVersionNumber + 1;
-
-            var existingBlobUri = referenceBlob.Uri;
-            var newBlobName = string.Format("{0}.{1}",referenceBlob.Name, nextVersion);
+            
             var newBlobUrl = AzureHelper.GenerateUrl( referenceBlob.Container.Name, newBlobName);
+        
+            var existingBlobUri = referenceBlob.Uri;
+        
             var newBlob = blobClient.GetBlobReferenceFromServer( new Uri( newBlobUrl));
             newBlob.StartCopyFromBlob(existingBlobUri);
 
