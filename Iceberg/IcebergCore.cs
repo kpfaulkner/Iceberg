@@ -50,7 +50,6 @@ namespace Iceberg
                 var baseReferenceBlob = cloudClient.GetBlobReferenceFromServer( new Uri( AzureHelper.GenerateUrl(containerName, blobName)));
 
                 // signature info from existing blob.
-                baseReferenceBlob.FetchAttributes();
                 latestVersion = GetLatestVersionNumber(baseReferenceBlob);
                 var sigCount = Convert.ToInt32(baseReferenceBlob.Metadata[SigCount]);
                 var sigUrl = baseReferenceBlob.Metadata[SigUrl];
@@ -107,7 +106,7 @@ namespace Iceberg
             {
                 // use entire name as prefix? Valid? FIXME
                 var blobList = container.ListBlobs(blobName);
-                var filteredBlobList = (from b in blobList where (((ICloudBlob)b).CopyState != null) && (((ICloudBlob)b).CopyState.Status ==                        CopyStatus.Pending) select b.Uri.AbsolutePath).ToList<string>();
+                var filteredBlobList = (from b in blobList where (((ICloudBlob)b).CopyState != null) && (((ICloudBlob)b).CopyState.Status == CopyStatus.Pending) select b.Uri.AbsolutePath).ToList<string>();
 
                 // has any, then hasn't completed/aborted yet.
                 if (!filteredBlobList.Any())
@@ -185,9 +184,47 @@ namespace Iceberg
             return latestVersion;
         }
 
-        internal void ListBlobs(string p1, string p2, string p3)
+        internal void ListBlobs(string containerName, string blobName)
         {
-            throw new NotImplementedException();
+            var cloudClient = AzureHelper.GetCloudBlobClient();
+            var baseReferenceBlob = cloudClient.GetBlobReferenceFromServer(new Uri(AzureHelper.GenerateUrl(containerName, blobName)));
+
+            var container = cloudClient.GetContainerReference(containerName);
+            var blobList = container.ListBlobs(blobName);
+
+            // convert to CloudBlockBlob list.
+            // get blobs without signatures..
+            var blockBlobList = blobList.Select(b => b as CloudBlockBlob).Where(bb => !bb.Name.EndsWith(".sig")).ToList();
+
+            // get signature list.
+            var existingSigNames = blobList.Select(b => b as CloudBlockBlob).Where(bb => bb.Name.EndsWith(".sig")).Select( b => b.Name).ToList();
+
+            var blobsToList = new List<string>();
+
+            // loop through list of blobs that include blobName.v<number> AND AND AND has signature file.
+            foreach (var blob in blockBlobList)
+            {
+                try
+                {
+                    // get attributes of blob.
+                    blob.FetchAttributes();
+                    var sigName = blob.Metadata[SigUrl];
+
+                    if (existingSigNames.Contains( sigName))
+                    {
+                        blobsToList.Add(blob.Name);
+                    }
+                }
+                catch(Exception )
+                {
+                    // ugly swallow... but possibly no matching metadata.
+                }
+            }
+
+            foreach(var b in blobsToList)
+            {
+                Console.WriteLine(b);
+            }
         }
 
         internal void DownloadCloudBlob(string p1, string p2, string p3)

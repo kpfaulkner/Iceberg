@@ -42,7 +42,7 @@ namespace Iceberg
             switch( args[0])
             {
                 case "list":
-                    core.ListBlobs(args[1], args[2], args[3]);
+                    core.ListBlobs(args[1], args[2]);
                     break;
                 case "upload":
                     core.UpdateCloudBlob(args[1], args[2], args[3], 1);
