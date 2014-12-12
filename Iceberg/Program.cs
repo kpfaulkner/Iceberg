@@ -32,6 +32,8 @@ namespace Iceberg
                 Console.WriteLine("iceberg list <container> <blobname> : Lists blob versions for this blob");
                 Console.WriteLine("iceberg upload <local path> <container> <blobname> : Uploads/updates blob ");
                 Console.WriteLine("iceberg download <local path> <container> <blobname> : Downloads blob. Can be version specific");
+                Console.WriteLine("iceberg prune <container> <blobname> <number of versions to keep>: Removes unwanted backups");
+
                 return;
             }
 
@@ -40,13 +42,13 @@ namespace Iceberg
             switch( args[0])
             {
                 case "list":
-                    core.ListBlobs(args[0], args[1], args[2]);
+                    core.ListBlobs(args[1], args[2], args[3]);
                     break;
                 case "upload":
-                    core.UpdateCloudBlob(args[0], args[1], args[2], 1);
+                    core.UpdateCloudBlob(args[1], args[2], args[3], 1);
                     break;
                 case "download":
-                    core.DownloadCloudBlob(args[0], args[1], args[2]);
+                    core.DownloadCloudBlob(args[1], args[2], args[3]);
                     break;
 
                 default:

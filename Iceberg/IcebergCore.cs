@@ -39,6 +39,8 @@ namespace Iceberg
         /// <param name="versionsToKeep"></param>
         public void UpdateCloudBlob( string filePath, string containerName, string blobName, int numberOfVersionsToKeep)
         {
+            var latestVersion = 0;
+
             // Check if blob already exists
             if (AzureHelper.DoesBlobExist( containerName, blobName))
             {
@@ -49,11 +51,11 @@ namespace Iceberg
 
                 // signature info from existing blob.
                 baseReferenceBlob.FetchAttributes();
-                var latestVersion = GetLatestVersionNumber(baseReferenceBlob);
+                latestVersion = GetLatestVersionNumber(baseReferenceBlob);
                 var sigCount = Convert.ToInt32(baseReferenceBlob.Metadata[SigCount]);
                 var sigUrl = baseReferenceBlob.Metadata[SigUrl];
-                var nextVersion = latestVersion + 1;
-                var renamedBlobName = string.Format("{0}.v{1}", baseReferenceBlob.Name, nextVersion);
+                latestVersion++;
+                var renamedBlobName = string.Format("{0}.v{1}", baseReferenceBlob.Name, latestVersion);
 
                 // copy existing blob to new name (latestVersion+1)
                 // will need to wait for async blob copy to complete.
@@ -68,13 +70,14 @@ namespace Iceberg
 
                 // modify "renamed blob" to have correct sig metadata.
                 UpdateSignatureDetails(containerName, renamedBlobName, newSigReferenceBlobName, sigCount);
-
             }
 
             // use blobsync to update this new latest.
             var blobSyncClient = new BlobSync.AzureOps();
             blobSyncClient.UploadFile(containerName, blobName, filePath);
- 
+
+            // set latest version metadata.
+            UpdateLatestVersionNumber(containerName, blobName, latestVersion);
         }
 
         private void UpdateSignatureDetails(string containerName, string newBlobName, string newSigReferenceBlobName, int sigCount)
@@ -159,8 +162,11 @@ namespace Iceberg
         }
 
         // Updates the blob version in the original blob, and returns the 
-        private void UpdateLatestVersionNumber( ICloudBlob referenceBlob, int versionNo)
+        private void UpdateLatestVersionNumber( string containerName, string blobName, int versionNo)
         {
+            var cloudClient = AzureHelper.GetCloudBlobClient();
+
+            var referenceBlob = cloudClient.GetBlobReferenceFromServer(new Uri(AzureHelper.GenerateUrl(containerName, blobName)));
             referenceBlob.FetchAttributes();
             referenceBlob.Metadata[LatestVersion] = versionNo.ToString();
             referenceBlob.SetMetadata();
