@@ -27,6 +27,32 @@ namespace Iceberg
     {
         static void Main(string[] args)
         {
+            if (args.Length == 0)
+            {
+                Console.WriteLine("iceberg list <container> <blobname> : Lists blob versions for this blob");
+                Console.WriteLine("iceberg upload <local path> <container> <blobname> : Uploads/updates blob ");
+                Console.WriteLine("iceberg download <local path> <container> <blobname> : Downloads blob. Can be version specific");
+                return;
+            }
+
+            var core = new IcebergCore();
+
+            switch( args[0])
+            {
+                case "list":
+                    core.ListBlobs(args[0], args[1], args[2]);
+                    break;
+                case "upload":
+                    core.UpdateCloudBlob(args[0], args[1], args[2], 1);
+                    break;
+                case "download":
+                    core.DownloadCloudBlob(args[0], args[1], args[2]);
+                    break;
+
+                default:
+                    Console.WriteLine("Invalid arguments");
+                    break;
+            }
         }
     }
 }

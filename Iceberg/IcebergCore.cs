@@ -26,10 +26,10 @@ namespace Iceberg
 {
     class IcebergCore
     {
-        static string VersionKey = "VERSION";
         const string SigUrl = "sigurl";
         const string SigCount = "sigcount";
-
+        const string LatestVersion = "latest";
+       
         /// <summary>
         /// Upload/update container/blob in Azure storage. 
         /// Will make a copy of the previous version uploaded then attempt to update it 
@@ -45,50 +45,36 @@ namespace Iceberg
                 // can update it.
                 // if blob exists, get name of latest version
                 var cloudClient = AzureHelper.GetCloudBlobClient();
-                var referenceBlob = cloudClient.GetBlobReferenceFromServer( new Uri( AzureHelper.GenerateUrl(containerName, blobName)));
+                var baseReferenceBlob = cloudClient.GetBlobReferenceFromServer( new Uri( AzureHelper.GenerateUrl(containerName, blobName)));
 
                 // signature info from existing blob.
-                referenceBlob.FetchAttributes();
-                var sigCount = Convert.ToInt32(referenceBlob.Metadata[SigCount]);
-                var sigUrl = referenceBlob.Metadata[SigUrl];
+                baseReferenceBlob.FetchAttributes();
+                var latestVersion = GetLatestVersionNumber(baseReferenceBlob);
+                var sigCount = Convert.ToInt32(baseReferenceBlob.Metadata[SigCount]);
+                var sigUrl = baseReferenceBlob.Metadata[SigUrl];
+                var nextVersion = latestVersion + 1;
+                var renamedBlobName = string.Format("{0}.v{1}", baseReferenceBlob.Name, nextVersion);
 
-                int latestVersionNumber = GetLatestVersionNumber(referenceBlob);
-                var nextVersion = latestVersionNumber + 1;
-                var newBlobName = string.Format("{0}.{1}", referenceBlob.Name, nextVersion);
-            
-                // gets name for new blob.
+                // copy existing blob to new name (latestVersion+1)
                 // will need to wait for async blob copy to complete.
-                CopyBlobToNewVersion(cloudClient, referenceBlob, newBlobName);
+                CopyBlobToNewVersion(cloudClient, baseReferenceBlob, renamedBlobName);
+                MonitorASyncBlobCopy(containerName, renamedBlobName, 120); // 2 min timeout?
 
-                // wait until complete
-                MonitorASyncBlobCopy(containerName, newBlobName, 120); // 2 min timeout?
-
+                // copy existing sig to new name
                 var sigReferenceBlob = cloudClient.GetBlobReferenceFromServer(new Uri(AzureHelper.GenerateUrl(containerName, sigUrl)));
-
-                sigCount++;
-                var newSigReferenceBlobName = string.Format("{0}.{1}.sig", newBlobName, sigCount);
-
-                // copy signature file.
+                var newSigReferenceBlobName = string.Format("{0}.{1}.sig", renamedBlobName, sigCount);
                 CopyBlobToNewVersion(cloudClient, sigReferenceBlob, newSigReferenceBlobName);
-
-                // wait until complete
                 MonitorASyncBlobCopy(containerName, newSigReferenceBlobName, 120); // 2 min timeout?
 
-                // modify new blobs metadata with signature reference.
-                UpdateSignatureDetails(containerName, newBlobName, newSigReferenceBlobName, sigCount);
-
-                // use blobsync to update this new latest.
-                var blobSyncClient = new BlobSync.AzureOps();
-                blobSyncClient.UploadFile(containerName, newBlobName, filePath);
-
-                // determine how many versions of the blob exist, prune them down to "numberOfVersionsToKeep"
+                // modify "renamed blob" to have correct sig metadata.
+                UpdateSignatureDetails(containerName, renamedBlobName, newSigReferenceBlobName, sigCount);
 
             }
-            else
-            {
-                // doesnt exist, nothing tricky to do just upload the sucker.
 
-            }
+            // use blobsync to update this new latest.
+            var blobSyncClient = new BlobSync.AzureOps();
+            blobSyncClient.UploadFile(containerName, blobName, filePath);
+ 
         }
 
         private void UpdateSignatureDetails(string containerName, string newBlobName, string newSigReferenceBlobName, int sigCount)
@@ -157,8 +143,11 @@ namespace Iceberg
             var newBlobUrl = AzureHelper.GenerateUrl( referenceBlob.Container.Name, newBlobName);
         
             var existingBlobUri = referenceBlob.Uri;
-        
-            var newBlob = blobClient.GetBlobReferenceFromServer( new Uri( newBlobUrl));
+
+            var container = blobClient.GetContainerReference(referenceBlob.Container.Name);
+            var newBlob = container.GetBlockBlobReference(newBlobName);
+
+            //var newBlob = blobClient.GetBlobReferenceFromServer( new Uri( newBlobUrl));
             newBlob.StartCopyFromBlob(existingBlobUri);
 
             return newBlobName;
@@ -173,7 +162,7 @@ namespace Iceberg
         private void UpdateLatestVersionNumber( ICloudBlob referenceBlob, int versionNo)
         {
             referenceBlob.FetchAttributes();
-            referenceBlob.Metadata[VersionKey] = versionNo.ToString();
+            referenceBlob.Metadata[LatestVersion] = versionNo.ToString();
             referenceBlob.SetMetadata();
         }
 
@@ -182,12 +171,22 @@ namespace Iceberg
             referenceBlob.FetchAttributes();
             var latestVersion = 0; // 0 == doesn't exist.
 
-            if (referenceBlob.Metadata.ContainsKey(VersionKey))
+            if (referenceBlob.Metadata.ContainsKey(LatestVersion))
             {
-                latestVersion = Convert.ToInt32(referenceBlob.Metadata[VersionKey] );
+                latestVersion = Convert.ToInt32(referenceBlob.Metadata[LatestVersion]);
             }
 
             return latestVersion;
+        }
+
+        internal void ListBlobs(string p1, string p2, string p3)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal void DownloadCloudBlob(string p1, string p2, string p3)
+        {
+            throw new NotImplementedException();
         }
     }
 }
