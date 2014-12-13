@@ -184,7 +184,7 @@ namespace Iceberg
             return latestVersion;
         }
 
-        internal void ListBlobs(string containerName, string blobName)
+        internal List<CloudBlockBlob> GetListOfBlobs( string containerName, string blobName)
         {
             var cloudClient = AzureHelper.GetCloudBlobClient();
             var baseReferenceBlob = cloudClient.GetBlobReferenceFromServer(new Uri(AzureHelper.GenerateUrl(containerName, blobName)));
@@ -194,10 +194,21 @@ namespace Iceberg
 
             // convert to CloudBlockBlob list.
             // get blobs without signatures..
-            var blockBlobList = blobList.Select(b => b as CloudBlockBlob).Where(bb => !bb.Name.EndsWith(".sig")).ToList();
+            var blockBlobList = blobList.Select(b => b as CloudBlockBlob).ToList();
+            
+            return blockBlobList;
+        }
+
+        internal void ListBlobs(string containerName, string blobName)
+        {
+            var blobList = GetListOfBlobs(containerName, blobName);
+
+            // convert to CloudBlockBlob list.
+            // get blobs without signatures..
+            var blockBlobList = blobList.Where(bb => !bb.Name.EndsWith(".sig")).ToList();
 
             // get signature list.
-            var existingSigNames = blobList.Select(b => b as CloudBlockBlob).Where(bb => bb.Name.EndsWith(".sig")).Select( b => b.Name).ToList();
+            var existingSigNames = blobList.Where(bb => bb.Name.EndsWith(".sig")).Select( b => b.Name).ToList();
 
             var blobsToList = new List<string>();
 
@@ -227,9 +238,38 @@ namespace Iceberg
             }
         }
 
-        internal void DownloadCloudBlob(string p1, string p2, string p3)
+        internal void DownloadCloudBlob(string filePath, string containerName, string blobName)
         {
-            throw new NotImplementedException();
+            // use blobsync to update this new latest.
+            var blobSyncClient = new BlobSync.AzureOps();
+            blobSyncClient.DownloadBlob(containerName, blobName, filePath);
+        }
+
+        internal void Prune(string containerName, string blobName, int numVersionsToKeep)
+        {
+            var blobList = GetListOfBlobs(containerName, blobName);
+            var cloudBlobClient = AzureHelper.GetCloudBlobClient();
+            var container = cloudBlobClient.GetContainerReference( containerName);
+
+            // filter out blob with exact correct blobName
+            var latestBlob = blobList.Where(b => b.Name == blobName).FirstOrDefault();
+            blobList.Remove(latestBlob);
+
+            // apart from blob with exactly "blobName" name, we want to delete all but the 
+            // most recent "numVersionsToKeep". (and sigs).
+            // loads of conversions here....   should I just go against "Latest" metadata? (means pulling that in though).
+            var blockBlobList = blobList.Where(bb => !bb.Name.EndsWith(".sig")).OrderByDescending(b => Convert.ToInt32(b.Name.Split('.')[1].Substring(1)));
+            foreach( var blob in blockBlobList.Skip(numVersionsToKeep))
+            {
+                blob.FetchAttributes();
+                var sigBlobName = blob.Metadata[SigUrl];
+
+                var sigBlob = container.GetBlobReferenceFromServer(sigBlobName);
+
+                // is async... is good.
+                sigBlob.DeleteAsync();
+                blob.DeleteAsync();
+            }
         }
     }
 }

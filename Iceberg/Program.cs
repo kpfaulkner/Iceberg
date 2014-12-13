@@ -50,6 +50,9 @@ namespace Iceberg
                 case "download":
                     core.DownloadCloudBlob(args[1], args[2], args[3]);
                     break;
+                case "prune":
+                    core.Prune(args[1], args[2], Convert.ToInt32(args[3]));
+                    break;
 
                 default:
                     Console.WriteLine("Invalid arguments");
