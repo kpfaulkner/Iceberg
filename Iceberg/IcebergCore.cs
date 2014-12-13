@@ -29,7 +29,7 @@ namespace Iceberg
         const string SigUrl = "sigurl";
         const string SigCount = "sigcount";
         const string LatestVersion = "latest";
-       
+
         /// <summary>
         /// Upload/update container/blob in Azure storage. 
         /// Will make a copy of the previous version uploaded then attempt to update it 
@@ -223,7 +223,7 @@ namespace Iceberg
 
                     if (existingSigNames.Contains( sigName))
                     {
-                        blobsToList.Add(blob.Name);
+                        blobsToList.Add(blob.Name + " " + blob.Properties.LastModified.ToString());
                     }
                 }
                 catch(Exception )
