@@ -73,10 +73,12 @@ namespace Iceberg
 
             // use blobsync to update this new latest.
             var blobSyncClient = new BlobSync.AzureOps();
-            blobSyncClient.UploadFile(containerName, blobName, filePath);
+            var bytesUploaded = blobSyncClient.UploadFile(containerName, blobName, filePath);
 
             // set latest version metadata.
             UpdateLatestVersionNumber(containerName, blobName, latestVersion);
+
+            Console.WriteLine("Uploaded {0} bytes", bytesUploaded);
         }
 
         private void UpdateSignatureDetails(string containerName, string newBlobName, string newSigReferenceBlobName, int sigCount)
@@ -119,9 +121,7 @@ namespace Iceberg
                     // but will do for now.
                     Thread.Sleep(1000);
                 }
-
                 operationTime = DateTime.UtcNow;
-
             }
 
             if (!completedCopy)
@@ -129,10 +129,7 @@ namespace Iceberg
                 // expired... throw exception
                 throw new TimeoutException("Copying operation taking too long");
             }
-
         }
-
-
 
         /// <summary>
         /// Finds latest version of blob. Copies it to new version.
@@ -242,7 +239,8 @@ namespace Iceberg
         {
             // use blobsync to update this new latest.
             var blobSyncClient = new BlobSync.AzureOps();
-            blobSyncClient.DownloadBlob(containerName, blobName, filePath);
+            var bytesDownloaded = blobSyncClient.DownloadBlob(containerName, blobName, filePath);
+            Console.WriteLine("Downloaded {0} bytes", bytesDownloaded);
         }
 
         internal void Prune(string containerName, string blobName, int numVersionsToKeep)
