@@ -42,11 +42,31 @@ namespace Iceberg
             {
                 azureAccountName = ConfigurationManager.AppSettings["AzureAccountName"];
                 azureAccountKey = ConfigurationManager.AppSettings["AzureAccountKey"];
+
+                if (string.IsNullOrWhiteSpace(azureAccountKey) || string.IsNullOrWhiteSpace(azureAccountName))
+                {
+                    isDev = true;
+                }
             }
             catch(Exception)
             {
                 isDev = true;
             }
+        }
+
+        public static string GetBlobMD5(string containerName, string blobName)
+        {
+            if (DoesBlobExist(containerName, blobName))
+            {
+                var client = GetCloudBlobClient();
+                var container = client.GetContainerReference(containerName);
+                var url = GenerateUrl(containerName, blobName);
+                var blobRef = client.GetBlobReferenceFromServer(new Uri(url));
+                blobRef.FetchAttributes();
+                return blobRef.Properties.ContentMD5;
+            }
+
+            return string.Empty;
         }
 
         public static bool DoesBlobExist(string container, string blobName)
@@ -61,9 +81,8 @@ namespace Iceberg
                 if (blob != null)
                     exists = true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
             }
 
             return exists;
@@ -71,7 +90,15 @@ namespace Iceberg
 
         internal static string GenerateUrl(string containerName, string blobName)
         {
-            return string.Format("https://{0}.{1}/{2}/{3}", azureAccountName, AzureBaseUrl, containerName, blobName);
+            if (isDev)
+            {
+                return string.Format("http://127.0.0.1:10000/devstoreaccount1/{0}/{1}", containerName, blobName);
+
+            }
+            else
+            {
+                return string.Format("https://{0}.{1}/{2}/{3}", azureAccountName, AzureBaseUrl, containerName, blobName);
+            }
         }
 
         public static CloudBlobClient GetCloudBlobClient()
