@@ -283,7 +283,7 @@ namespace Iceberg
             // apart from blob with exactly "blobName" name, we want to delete all but the 
             // most recent "numVersionsToKeep". (and sigs).
             // loads of conversions here....   should I just go against "Latest" metadata? (means pulling that in though).
-            var blockBlobList = blobList.Where(bb => !bb.Name.EndsWith(".sig")).OrderByDescending(b => Convert.ToInt32(b.Name.Split('.')[1].Substring(1)));
+            var blockBlobList = blobList.Where(bb => !bb.Name.EndsWith(".sig")).OrderByDescending(b => Convert.ToInt32(b.Name.Split('.').Last().Substring(1)));
             foreach( var blob in blockBlobList.Skip(numVersionsToKeep))
             {
                 blob.FetchAttributes();
